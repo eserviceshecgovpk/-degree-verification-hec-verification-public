@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Degree attestation verification</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #eef0f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #495057;
+    padding: 24px 16px 60px 16px;
+  }
+
+  .wrap { max-width: 1260px; margin: 0 auto; }
+  .card { background: #ffffff; border-radius: 6px; border: 1px solid #e3e6ea; }
+
+  .header { padding: 24px 24px 20px 24px; border-bottom: 1px solid #e3e6ea; }
+  .header h1 { margin: 0 0 8px 0; font-size: 26px; font-weight: 600; color: #384454; }
+  .header p { margin: 0; font-size: 14px; color: #6c7a89; line-height: 1.5; }
+
+  .panel-title {
+    background: linear-gradient(to bottom, #f4faf5, #edf3ee);
+    border-bottom: 1px solid #e3e6ea;
+    padding: 12px 20px; font-weight: 700; font-size: 14px; color: #384454;
+  }
+  .panel-body { padding: 24px 20px 8px 20px; }
+
+  .fields-row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .field { flex: 1; min-width: 260px; }
+  .field input {
+    width: 100%; padding: 10px 12px; font-size: 15px;
+    border: 1px solid #ced4da; border-radius: 4px; color: #495057; outline: none;
+  }
+  .field input:focus { border-color: #8fbf9f; box-shadow: 0 0 0 2px rgba(87,171,115,0.15); }
+  .field input::placeholder { color: #8b96a3; }
+  .field .hint { margin-top: 6px; font-size: 12px; color: #8b96a3; }
+
+  /* ---------- text-in-image captcha ---------- */
+  .verification-box {
+    margin-top: 28px; border: 1px dashed #cfd4da; background: #fafbfc;
+    padding: 18px 20px 22px 20px; border-radius: 3px;
+  }
+  .verification-label { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: #8b96a3; margin-bottom: 14px; }
+
+  .captcha-widget { max-width: 380px; }
+  .captcha-image-row { display: flex; align-items: center; gap: 10px; }
+  .captcha-image-row canvas { border: 1px solid #d3d3d3; border-radius: 4px; background: #f2f4f6; }
+  .captcha-reload {
+    width: 38px; height: 38px; border-radius: 4px; border: 1px solid #d3d3d3; background: #fff;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 17px; color: #57ab73;
+  }
+  .captcha-reload:hover { background: #f2f4f6; }
+  .captcha-input-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+  .captcha-input-row input {
+    flex: 1; padding: 9px 12px; font-size: 15px; border: 1px solid #ced4da; border-radius: 4px; outline: none;
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .captcha-input-row input:focus { border-color: #8fbf9f; box-shadow: 0 0 0 2px rgba(87,171,115,0.15); }
+  .btn-verify { background: #384454; color: #fff; padding: 9px 18px; font-size: 13px; white-space: nowrap; }
+  .btn-verify:hover { background: #2b3543; }
+  .captcha-hint { font-size: 12px; color: #8b96a3; margin-top: 8px; }
+  .captcha-status { font-size: 12px; margin-top: 8px; font-weight: 700; display: none; }
+  .captcha-status.ok { color: #2f9e56; display: block; }
+  .captcha-status.bad { color: #e35d6a; display: block; }
+
+  .footer-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px; border-top: 1px solid #e3e6ea; margin-top: 8px;
+  }
+  button { border: none; border-radius: 4px; padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-search { background: #7fc9a0; color: #fff; }
+  .btn-search:hover { background: #6fbd92; }
+  .btn-search:disabled { background: #c8e3d3; cursor: not-allowed; }
+  .btn-group { display: flex; gap: 10px; }
+  .btn-reset { background: #f0a93b; color: #fff; }
+  .btn-reset:hover { background: #e09c2f; }
+  .btn-close { background: #e35d6a; color: #fff; }
+  .btn-close:hover { background: #d94c5a; }
+
+  /* ---------- results (2 columns) ---------- */
+  #results-card { margin-top: 24px; display: none; }
+  .results-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid #e3e6ea; }
+  .results-header h2 { margin: 0; font-size: 18px; font-weight: 700; color: #384454; }
+  .results-badge { background: #e5f6ea; color: #2f9e56; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 12px; }
+
+  .records-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; }
+  @media (max-width: 720px) { .records-grid { grid-template-columns: 1fr; } }
+
+  .record-card { border: 1px solid #e3e6ea; border-radius: 6px; overflow: hidden; position: relative; }
+  .record-card-title { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #6c7a89; padding: 16px 20px 0 20px; }
+  .record-body { transition: filter .3s ease; }
+  .record-fields { padding: 14px 20px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .record-fields.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0; }
+  .rf-box { background: #f7f8fa; border: 1px solid #edf0f2; border-radius: 4px; padding: 10px 14px; }
+  .rf-label { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #9aa5b1; margin-bottom: 4px; }
+  .rf-value { font-size: 14px; color: #384454; font-weight: 500; }
+
+  /* ---------- download overlay + hover blur ---------- */
+  .download-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    opacity: 1; z-index: 5; pointer-events: none;
+  }
+  .download-icon-btn { pointer-events: auto; }
+  .record-card:hover .record-body { filter: blur(4px); }
+
+  .download-icon-btn {
+    height: 54px; padding: 0 26px; border-radius: 27px; background: rgba(56,68,84,0.85); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+    transition: background .2s ease, transform .2s ease; text-decoration: none;
+    color: #fff; font-size: 15px; font-weight: 600;
+  }
+  .download-icon-btn:hover { background: #3b6ea5; transform: scale(1.07); }
+  .download-icon-btn:active { transform: scale(0.96); }
+  .download-icon-btn svg { width: 22px; height: 22px; fill: none; stroke: #fff; flex-shrink: 0; }
+  .download-icon-btn.disabled { background: rgba(139,150,163,0.75); cursor: not-allowed; pointer-events: none; }
+
+  /* ---------- error dialog (slides from top) ---------- */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(60,64,71,0.5);
+    align-items: flex-start; justify-content: center; z-index: 999; padding-top: 60px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: #fff; border-radius: 6px; width: 460px; max-width: 90vw;
+    padding: 36px 30px 28px 30px; text-align: center; position: relative; overflow: hidden;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.25);
+    transform: translateY(-80px); opacity: 0; transition: transform .35s ease, opacity .35s ease;
+  }
+  .modal-overlay.show .modal-box { transform: translateY(0); opacity: 1; }
+  .modal-deco { position: absolute; right: -30px; bottom: -30px; width: 170px; height: 170px; border-radius: 50%; background: #fbe4e6; z-index: 0; }
+  .modal-icon {
+    width: 76px; height: 76px; border-radius: 50%; background: #e35d6a; margin: 0 auto 18px auto;
+    display: flex; align-items: center; justify-content: center; position: relative; z-index: 1;
+  }
+  .modal-icon svg { width: 38px; height: 38px; }
+  .modal-title { font-size: 21px; font-weight: 700; color: #384454; margin: 0 0 6px 0; position: relative; z-index: 1; }
+  .modal-sub { font-size: 14px; color: #6c7a89; margin: 0 0 22px 0; position: relative; z-index: 1; }
+  .modal-ok { background: #e35d6a; color: #fff; padding: 9px 28px; position: relative; z-index: 1; }
+  .modal-ok:hover { background: #d94c5a; }
+
+  /* ---------- mobile view ---------- */
+  @media (max-width: 640px) {
+    body { padding: 0; }
+    .wrap { max-width: 100%; }
+    .card { border-radius: 0; border-left: none; border-right: none; }
+    .header { padding: 20px 18px 16px 18px; }
+    .header h1 { font-size: 21px; }
+    .header p { font-size: 13.5px; }
+    .panel-body { padding: 20px 18px 8px 18px; }
+    .field input { padding: 13px 14px; border-radius: 8px; font-size: 15px; }
+    .verification-box { border-radius: 8px; padding: 16px; }
+    .footer-row { flex-direction: column; align-items: stretch; gap: 12px; padding: 18px; }
+    .btn-group { flex-direction: column; width: 100%; gap: 12px; }
+    button { width: 100%; padding: 14px; border-radius: 8px; font-size: 15px; }
+    .records-grid { padding: 18px; gap: 16px; }
+    .print-icon-btn, .download-icon-btn { height: 48px; padding: 0 20px; font-size: 14px; }
+  }
+
+  /* ---------- page loading screen ---------- */
+  .page-loader {
+    position: fixed; inset: 0; background: #eef0f5; z-index: 3000;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity .4s ease, visibility .4s ease;
+  }
+  .page-loader.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+  .loader-spinner { position: relative; width: 110px; height: 110px; display: flex; align-items: center; justify-content: center; }
+  .loader-logo {
+    width: 74px; height: 74px; object-fit: contain; border-radius: 50%; background: #fff;
+    padding: 8px; position: relative; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+  .loader-ring { position: absolute; inset: 0; border-radius: 50%; border: 4px solid transparent; }
+  .loader-ring.blue { border-top-color: #3b6ea5; border-right-color: #3b6ea5; animation: loader-spin 1.1s linear infinite; }
+  .loader-ring.green { inset: 12px; border-bottom-color: #57ab73; border-left-color: #57ab73; animation: loader-spin 1.5s linear infinite reverse; }
+  @keyframes loader-spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ===== loading screen (shown briefly on every page load/refresh) ===== -->
+<div class="page-loader" id="pageLoader">
+  <div class="loader-spinner">
+    <span class="loader-ring blue"></span>
+    <span class="loader-ring green"></span>
+    <!-- Replace LOGO_URL_HERE below with the link to your own logo image -->
+    <img class="loader-logo" id="loaderLogo" src="https://www.hec.gov.pk/Style%20Library/HEC/images/main-logo.png" alt="HEC Logo"
+         onerror="this.style.display='none'">
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="card" id="search-card">
+    <div class="header">
+      <h1>Degree attestation verification</h1>
+      <p>Enter your CNIC or passport number and HEC reference number, then complete the verification step to view your application.</p>
+    </div>
+
+    <div class="panel-title">Search</div>
+    <div class="panel-body">
+      <div class="fields-row">
+        <div class="field">
+          <input type="text" id="inCnic" placeholder="CNIC / Passport number *">
+          <div class="hint">CNIC or passport number without dashes</div>
+        </div>
+        <div class="field">
+          <input type="text" id="inRef" placeholder="Reference number *">
+          <div class="hint">As printed on your HEC application or correspondence</div>
+        </div>
+      </div>
+
+      <div class="verification-box">
+        <div class="verification-label">VERIFICATION</div>
+        <div class="captcha-widget">
+          <div class="captcha-image-row">
+            <canvas id="captchaCanvas" width="200" height="60"></canvas>
+            <div class="captcha-reload" id="captchaReload" title="New image">&#8635;</div>
+          </div>
+          <div class="captcha-input-row">
+            <input type="text" id="captchaInput" placeholder="Enter the text shown above" maxlength="8">
+            <button class="btn-verify" id="btnVerifyCaptcha">Verify</button>
+          </div>
+          <div class="captcha-hint">Type the characters exactly as shown in the image.</div>
+          <div class="captcha-status" id="captchaStatus"></div>
+        </div>
+      </div>
+
+      <div class="footer-row">
+        <button class="btn-search" id="btnSearch" disabled>Search</button>
+        <div class="btn-group">
+          <button class="btn-reset" id="btnReset">Reset</button>
+          <button class="btn-close" id="btnClose">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="results-card">
+    <div class="results-header">
+      <h2>Application details</h2>
+      <span class="results-badge" id="resultsBadge">0 results</span>
+    </div>
+    <div class="records-grid" id="recordsGrid"></div>
+  </div>
+
+</div>
+
+<!-- ===== error dialog ===== -->
+<div class="modal-overlay" id="errorModal">
+  <div class="modal-box">
+    <div class="modal-deco"></div>
+    <div class="modal-icon">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M18 6L6 18" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+    </div>
+    <div class="modal-title">Error!</div>
+    <div class="modal-sub" id="modalMsg">Invalid input</div>
+    <button class="modal-ok" id="modalOk">OK</button>
+  </div>
+</div>
+
+<script>
+/* =====================================================
+   PAGE LOADING SCREEN
+===================================================== */
+(function () {
+  const loader = document.getElementById('pageLoader');
+  const minDisplay = 900; // ms — keep the loader visible at least this long
+  const start = Date.now();
+  function hideLoader() {
+    const elapsed = Date.now() - start;
+    const wait = Math.max(0, minDisplay - elapsed);
+    setTimeout(() => loader.classList.add('hide'), wait);
+  }
+  if (document.readyState === 'complete') hideLoader();
+  else window.addEventListener('load', hideLoader);
+})();
+
+/* =====================================================
+   RECORD DATA — add more people here
+===================================================== */
+const records = [
+  {
+    cnic: 'P06122959',
+    ref: 'HEC/A&A/DAS//2026/5156474',
+    appId: '5093091',
+    degree: 'Bachelor of Business Administration',
+    name: 'Muhammad Tariq',
+    fatherName: 'Atta Muhammad',
+    dob: '2000-07-21',
+    issuanceDate: '2026-07-08',
+    university: 'University of Haripur',
+    regNo: 'S20-0497-MGT-BBA/UOH',
+    attestedBy: 'Aalia Anwar',
+    // Paste this person's PDF link here (e.g. a direct Google Drive/Dropbox
+    // link, or a file you've uploaded to your own server such as
+    // 'pdfs/5093091.pdf'). Leave it as an empty string '' if you haven't
+    // uploaded a PDF for this person yet — the button will show as disabled.
+    pdfUrl: ''
+  }
+];
+
+function normalize(str) { return (str || '').replace(/[\s-]/g, '').toLowerCase(); }
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : str;
+  return d.innerHTML;
+}
+
+/* =====================================================
+   TEXT-IN-IMAGE CAPTCHA
+===================================================== */
+const CAPTCHA_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+let captchaText = '';
+let captchaVerified = false;
+
+function randomCaptchaText(len) {
+  let s = '';
+  for (let i = 0; i < len; i++) s += CAPTCHA_CHARS[Math.floor(Math.random() * CAPTCHA_CHARS.length)];
+  return s;
+}
+
+function drawCaptcha() {
+  captchaVerified = false;
+  document.getElementById('btnSearch').disabled = true;
+  document.getElementById('captchaInput').value = '';
+  const statusEl = document.getElementById('captchaStatus');
+  statusEl.className = 'captcha-status';
+  statusEl.textContent = '';
+
+  captchaText = randomCaptchaText(6);
+
+  const canvas = document.getElementById('captchaCanvas');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+
+  // background
+  const grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, '#eef2f5');
+  grad.addColorStop(1, '#e4e9ee');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // noise lines
+  for (let i = 0; i < 6; i++) {
+    ctx.strokeStyle = 'rgba(120,130,145,' + (0.15 + Math.random() * 0.2) + ')';
+    ctx.lineWidth = 1 + Math.random();
+    ctx.beginPath();
+    ctx.moveTo(Math.random() * w, Math.random() * h);
+    ctx.bezierCurveTo(Math.random()*w, Math.random()*h, Math.random()*w, Math.random()*h, Math.random()*w, Math.random()*h);
+    ctx.stroke();
+  }
+
+  // characters
+  const colors = ['#384454', '#3b6ea5', '#57ab73', '#8a4fbf', '#c0392b'];
+  const charWidth = w / (captchaText.length + 1);
+  for (let i = 0; i < captchaText.length; i++) {
+    ctx.save();
+    const x = charWidth * (i + 0.9);
+    const y = h / 2 + (Math.random() * 10 - 5);
+    ctx.translate(x, y);
+    ctx.rotate((Math.random() * 0.5 - 0.25));
+    ctx.font = 'bold ' + (26 + Math.floor(Math.random() * 8)) + 'px Georgia, serif';
+    ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(captchaText[i], 0, 0);
+    ctx.restore();
+  }
+
+  // dots
+  for (let i = 0; i < 30; i++) {
+    ctx.fillStyle = 'rgba(90,100,115,' + (0.1 + Math.random() * 0.2) + ')';
+    ctx.beginPath();
+    ctx.arc(Math.random() * w, Math.random() * h, 1 + Math.random() * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+document.getElementById('captchaReload').addEventListener('click', drawCaptcha);
+
+document.getElementById('btnVerifyCaptcha').addEventListener('click', () => {
+  const val = document.getElementById('captchaInput').value.trim().toUpperCase();
+  const statusEl = document.getElementById('captchaStatus');
+  if (val && val === captchaText) {
+    captchaVerified = true;
+    statusEl.className = 'captcha-status ok';
+    statusEl.textContent = 'Verified ✓';
+    document.getElementById('btnSearch').disabled = false;
+  } else {
+    captchaVerified = false;
+    statusEl.className = 'captcha-status bad';
+    statusEl.textContent = 'That doesn\u2019t match — try again.';
+    document.getElementById('btnSearch').disabled = true;
+    setTimeout(drawCaptcha, 900);
+  }
+});
+
+drawCaptcha();
+
+/* =====================================================
+   ERROR DIALOG
+===================================================== */
+function showErrorModal(msg) {
+  document.getElementById('modalMsg').textContent = msg || 'Invalid input';
+  const overlay = document.getElementById('errorModal');
+  overlay.style.display = 'flex';
+  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('show')));
+}
+function hideErrorModal() {
+  const overlay = document.getElementById('errorModal');
+  overlay.classList.remove('show');
+  setTimeout(() => { overlay.style.display = 'none'; }, 300);
+}
+document.getElementById('modalOk').addEventListener('click', hideErrorModal);
+document.getElementById('errorModal').addEventListener('click', (e) => {
+  if (e.target.id === 'errorModal') hideErrorModal();
+});
+
+/* =====================================================
+   SEARCH + RESULTS
+===================================================== */
+function renderResults(matches) {
+  const grid = document.getElementById('recordsGrid');
+  const badge = document.getElementById('resultsBadge');
+
+  // Show the same record twice, side by side, when only one match is found
+  const displayMatches = matches.length === 1 ? [matches[0], matches[0]] : matches;
+
+  badge.textContent = displayMatches.length + (displayMatches.length === 1 ? ' result' : ' results');
+  grid.innerHTML = '';
+
+  displayMatches.forEach((r, idx) => {
+    const card = document.createElement('div');
+    card.className = 'record-card';
+
+    const hasPdf = r.pdfUrl && r.pdfUrl.trim();
+    const downloadBtn = hasPdf
+      ? `<a class="download-icon-btn" href="${escapeHtml(r.pdfUrl)}" download target="_blank" rel="noopener" title="Print" aria-label="Print">
+           <svg viewBox="0 0 24 24"><path d="M6 9V4a1 1 0 011-1h10a1 1 0 011 1v5M6 18H4a1 1 0 01-1-1v-6a1 1 0 011-1h16a1 1 0 011 1v6a1 1 0 01-1 1h-2M6 14h12v7H6v-7z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+           <span>Print</span>
+         </a>`
+      : `<button class="download-icon-btn disabled" title="PDF not available yet" aria-label="PDF not available yet" disabled>
+           <svg viewBox="0 0 24 24"><path d="M6 9V4a1 1 0 011-1h10a1 1 0 011 1v5M6 18H4a1 1 0 01-1-1v-6a1 1 0 011-1h16a1 1 0 011 1v6a1 1 0 01-1 1h-2M6 14h12v7H6v-7z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+           <span>Print</span>
+         </button>`;
+
+    card.innerHTML = `
+      <div class="download-overlay">
+        ${downloadBtn}
+      </div>
+      <div class="record-body">
+        <div class="record-card-title">ATTESTATION RECORD</div>
+        <div class="record-fields">
+          <div class="record-fields grid2">
+            <div class="rf-box">
+              <div class="rf-label">APPLICATION ID</div>
+              <div class="rf-value">${escapeHtml(r.appId)}</div>
+            </div>
+            <div class="rf-box">
+              <div class="rf-label">CNIC / PASSPORT</div>
+              <div class="rf-value">${escapeHtml(r.cnic)}</div>
+            </div>
+          </div>
+          <div class="rf-box">
+            <div class="rf-label">REFERENCE NUMBER</div>
+            <div class="rf-value">${escapeHtml(r.ref)}</div>
+          </div>
+          <div class="rf-box">
+            <div class="rf-label">DEGREE TITLE</div>
+            <div class="rf-value">${escapeHtml(r.degree)}</div>
+          </div>
+          <div class="rf-box">
+            <div class="rf-label">NAME ON DEGREE</div>
+            <div class="rf-value">${escapeHtml(r.name)}</div>
+          </div>
+          <div class="rf-box">
+            <div class="rf-label">UNIVERSITY</div>
+            <div class="rf-value">${escapeHtml(r.university)}</div>
+          </div>
+          <div class="rf-box">
+            <div class="rf-label">ATTESTED BY</div>
+            <div class="rf-value">${escapeHtml(r.attestedBy)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+document.getElementById('btnSearch').addEventListener('click', () => {
+  document.getElementById('results-card').style.display = 'none';
+
+  const cnicVal = normalize(document.getElementById('inCnic').value);
+  const refVal = normalize(document.getElementById('inRef').value);
+
+  if (!cnicVal || !refVal) { showErrorModal('Please enter your CNIC / passport number and reference number.'); return; }
+  if (!captchaVerified) { showErrorModal('Please complete the verification step correctly.'); return; }
+
+  const matches = records.filter(r => normalize(r.cnic) === cnicVal && normalize(r.ref) === refVal);
+  if (matches.length === 0) { showErrorModal('No matching application was found for the details entered.'); return; }
+
+  renderResults(matches);
+  document.getElementById('results-card').style.display = 'block';
+  document.getElementById('results-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  document.getElementById('inCnic').value = '';
+  document.getElementById('inRef').value = '';
+  document.getElementById('results-card').style.display = 'none';
+  drawCaptcha();
+});
+
+document.getElementById('btnClose').addEventListener('click', () => {
+  document.getElementById('inCnic').value = '';
+  document.getElementById('inRef').value = '';
+  document.getElementById('results-card').style.display = 'none';
+});
+
+</script>
+</body>
+</html>
